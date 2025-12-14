@@ -114,14 +114,36 @@ class RigClient:
         return response == "RPRT 0"
 
     async def get_state(self) -> dict:
-        """Get full radio state."""
+        """Get full radio state with extended controls."""
         freq = await self.get_freq()
         mode, width = await self.get_mode()
         smeter = await self.get_smeter()
+
+        # Extended controls
+        rf_gain = await self.get_level("RFGAIN")
+        power = await self.get_level("RFPOWER")
+        spot = await self.get_func("SPOT")
+        agc_value = await self.get_parm("AGC")
+        break_in = await self.get_func("BKIN")
+        rit = await self.get_rit()
+
+        # Convert AGC value to string
+        agc_map = {0: "OFF", 1: "SLOW", 2: "MED", 3: "FAST"}
+        agc = agc_map.get(agc_value, "MED")
+
+        # Convert levels from 0.0-1.0 to percentages
+        rf_gain_pct = int(rf_gain * 100)
+        power_pct = int(power * 100)
 
         return {
             "freq": freq,
             "mode": mode,
             "filter_width": width,
             "smeter": smeter,
+            "rf_gain": rf_gain_pct,
+            "power": power_pct,
+            "spot": spot,
+            "agc": agc,
+            "break_in": break_in,
+            "rit": rit,
         }

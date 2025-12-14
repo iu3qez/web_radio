@@ -131,13 +131,19 @@ async def test_rig_client_get_smeter():
 
 @pytest.mark.asyncio
 async def test_rig_client_get_state():
-    """Test getting full radio state."""
+    """Test getting full radio state with extended controls."""
     client = RigClient(host="127.0.0.1", port=4532)
 
     responses = [
         b"14074000\n",  # freq
-        b"USB\n", b"2400\n",  # mode
+        b"USB\n", b"2400\n",  # mode, width
         b"-65\n",  # smeter
+        b"0.8\n",  # RF gain
+        b"0.5\n",  # RF power
+        b"1\n",  # SPOT
+        b"2\n",  # AGC
+        b"0\n",  # Break-in
+        b"100\n",  # RIT
     ]
     response_iter = iter(responses)
 
@@ -158,6 +164,12 @@ async def test_rig_client_get_state():
         assert state["mode"] == "USB"
         assert state["filter_width"] == 2400
         assert state["smeter"] == -65
+        assert state["rf_gain"] == 80
+        assert state["power"] == 50
+        assert state["spot"] is True
+        assert state["agc"] == "MED"
+        assert state["break_in"] is False
+        assert state["rit"] == 100
 
 
 @pytest.mark.asyncio
