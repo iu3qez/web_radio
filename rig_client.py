@@ -56,3 +56,18 @@ class RigClient:
             mode = (await self._reader.readline()).decode().strip()
             width = int((await self._reader.readline()).decode().strip())
             return mode, width
+
+    async def set_freq(self, freq: int) -> bool:
+        """Set frequency in Hz. Returns True on success."""
+        response = await self._send_command(f"F {freq}")
+        return response == "RPRT 0"
+
+    async def set_mode(self, mode: str, passband: int = 0) -> bool:
+        """Set mode (USB, LSB, CW, AM, FM). Returns True on success."""
+        response = await self._send_command(f"M {mode} {passband}")
+        return response == "RPRT 0"
+
+    async def get_smeter(self) -> int:
+        """Get S-meter reading in dBm."""
+        response = await self._send_command("l STRENGTH")
+        return int(response)
