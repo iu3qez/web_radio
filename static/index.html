@@ -1,5 +1,68 @@
 <!DOCTYPE html>
-<html>
-<head><title>Web Radio</title></head>
-<body><h1>Web Radio</h1></body>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Radio</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+    <div id="app" x-data="radioApp()">
+        <!-- Connection Status -->
+        <div class="status-bar">
+            <span class="status-indicator" :class="connectionStatus"></span>
+            <span x-text="connectionStatus"></span>
+        </div>
+
+        <!-- Main Display -->
+        <div class="display">
+            <div class="frequency" x-text="formatFreq(state.freq)"></div>
+            <div class="mode" x-text="state.mode"></div>
+        </div>
+
+        <!-- S-Meter -->
+        <div class="smeter-container">
+            <span class="smeter-label">S</span>
+            <div class="smeter-bar">
+                <div class="smeter-fill" :style="`width: ${smeterPercent}%`"></div>
+            </div>
+            <span class="smeter-value" x-text="state.smeter + ' dBm'"></span>
+        </div>
+
+        <!-- Mode Buttons -->
+        <div class="mode-buttons">
+            <template x-for="m in modes">
+                <button
+                    :class="{ active: state.mode === m }"
+                    @click="setMode(m)"
+                    x-text="m">
+                </button>
+            </template>
+        </div>
+
+        <!-- Frequency Control -->
+        <div class="freq-control">
+            <div
+                class="vfo-dial"
+                @wheel.prevent="handleWheel($event)">
+                <span>VFO</span>
+            </div>
+        </div>
+
+        <!-- Step Selector -->
+        <div class="step-selector">
+            <span>Step:</span>
+            <template x-for="s in steps">
+                <button
+                    :class="{ active: step === s.value }"
+                    @click="step = s.value"
+                    x-text="s.label">
+                </button>
+            </template>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
 </html>
