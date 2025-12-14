@@ -106,10 +106,7 @@
 
             <!-- Toggle Controls -->
             <div class="control-group toggle-group">
-                <label>
-                    <input type="checkbox" :checked="state.spot" @change="setSpot($event.target.checked)">
-                    <span>Spot</span>
-                </label>
+                <button @click="triggerSpot()" class="action-button">SPOT</button>
                 <label>
                     <input type="checkbox" :checked="state.break_in" @change="setBreakIn($event.target.checked)">
                     <span>Break-in</span>

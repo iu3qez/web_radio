@@ -8,7 +8,6 @@ function radioApp() {
             filter_width: 2400,
             rf_gain: 80,
             power: 50,
-            spot: false,
             agc: 'MED',
             break_in: false,
             rit: 0,
@@ -158,9 +157,9 @@ function radioApp() {
             this.state.power = parseInt(value);
         },
 
-        setSpot(enabled) {
-            this.sendCommand('set_spot', enabled);
-            this.state.spot = enabled;
+        triggerSpot() {
+            // Momentary action - trigger spot to center CW signal
+            this.sendCommand('set_spot', true);
         },
 
         setBreakIn(enabled) {
