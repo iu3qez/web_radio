@@ -83,9 +83,20 @@ class RigClient:
                 response = await asyncio.wait_for(self._reader.readline(), timeout=timeout)
                 response_str = response.decode().strip()
                 logger.debug(f"← rigctld: {response_str}")
+
+                # Log length for debugging
+                if len(response) != len(response_str) + 1:  # +1 for newline
+                    logger.warning(f"Response length mismatch: raw={len(response)} stripped={len(response_str)}")
+
                 return response_str
             except asyncio.TimeoutError:
                 logger.error(f"Timeout waiting for rigctld response to command: {cmd}")
+                # Try to read any pending data to prevent buffer pollution
+                try:
+                    pending = await asyncio.wait_for(self._reader.read(1024), timeout=0.1)
+                    logger.warning(f"Found pending data after timeout: {pending}")
+                except:
+                    pass
                 raise
 
     async def get_freq(self) -> int:
@@ -227,7 +238,7 @@ class RigClient:
         response = await self._send_command(f"J {offset}")
         return response == "RPRT 0"
 
-    async def send_raw_command(self, cmd: str) -> str:
+    async def send_raw_command(self, cmd: str, timeout: float = 5.0) -> str:
         """Send raw command to rig via rigctld 'w' (write_cmd).
 
         For sending native rig commands (like Thetis ZZGT, Kenwood GT, etc)
@@ -235,9 +246,42 @@ class RigClient:
 
         rigctld command: w <native_cmd>
         Returns: Response from rig
+
+        Args:
+            cmd: Native rig command (e.g. "ZZGT;" for Thetis)
+            timeout: Timeout in seconds (default: 5.0)
+
+        Note: Commands sent via 'w' return responses terminated with '\x00' (null byte)
+              instead of '\n' (newline), so we must use readuntil(b';') instead of readline()
         """
-        response = await self._send_command(f"w {cmd}")
-        return response
+        if not self.connected:
+            raise ConnectionError("Not connected to rigctld")
+
+        async with self._lock:
+            cmd_full = f"w {cmd}\n"
+            cmd_bytes = cmd_full.encode()
+            logger.debug(f"→ rigctld: w {cmd}")
+
+            try:
+                self._writer.write(cmd_bytes)
+                await asyncio.wait_for(self._writer.drain(), timeout=timeout)
+
+                # Read until semicolon (Thetis responses end with ';' then '\x00')
+                response = await asyncio.wait_for(
+                    self._reader.readuntil(b';'),
+                    timeout=timeout
+                )
+
+                # Read the trailing null byte
+                await asyncio.wait_for(self._reader.read(1), timeout=0.1)
+
+                response_str = response.decode().strip()
+                logger.debug(f"← rigctld: {response_str}")
+
+                return response_str
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout waiting for rigctld response to command: w {cmd}")
+                raise
 
     async def get_agc_thetis(self) -> int:
         """Get AGC using Thetis native ZZGT command.
@@ -256,11 +300,19 @@ class RigClient:
         Args:
             value: AGC value (0=Fixed, 1=Long, 2=Slow, 3=Med, 4=Fast, 5=Custom)
 
-        Returns: True on success
+        Returns: True (always - SET commands don't return responses via rigctld 'w')
         """
-        response = await self.send_raw_command(f"ZZGT{value};")
-        # Thetis responds with the same command as confirmation
-        return response.startswith("ZZGT")
+        # SET commands via rigctld 'w' don't return responses, just send and assume success
+        if not self.connected:
+            raise ConnectionError("Not connected to rigctld")
+
+        async with self._lock:
+            cmd = f"w ZZGT{value};\n"
+            logger.debug(f"→ rigctld: w ZZGT{value};")
+            self._writer.write(cmd.encode())
+            await self._writer.drain()
+            # No response expected from SET commands
+            return True
 
     async def get_rf_gain_thetis(self) -> int:
         """Get RF Gain (AGC Threshold) using Thetis native ZZAR command.
@@ -281,7 +333,7 @@ class RigClient:
         Args:
             value: AGC Threshold (-20 to +120)
 
-        Returns: True on success
+        Returns: True (always - SET commands don't return responses via rigctld 'w')
         """
         # Format with sign and 3 digits: +080, -020, +120
         if value >= 0:
@@ -289,9 +341,17 @@ class RigClient:
         else:
             value_str = f"{value:04d}"  # Negative sign counts as character
 
-        response = await self.send_raw_command(f"ZZAR{value_str};")
-        # Thetis responds with the same command as confirmation
-        return response.startswith("ZZAR")
+        # SET commands via rigctld 'w' don't return responses, just send and assume success
+        if not self.connected:
+            raise ConnectionError("Not connected to rigctld")
+
+        async with self._lock:
+            cmd = f"w ZZAR{value_str};\n"
+            logger.debug(f"→ rigctld: w ZZAR{value_str};")
+            self._writer.write(cmd.encode())
+            await self._writer.drain()
+            # No response expected from SET commands
+            return True
 
     async def get_state(self) -> dict:
         """Get full radio state with extended controls.
@@ -324,25 +384,7 @@ class RigClient:
             state["smeter"] = -100
 
         # Extended controls (optional - use defaults if not supported)
-        try:
-            # Use Thetis native ZZAR (AGC Threshold) command
-            # Thetis range: -20 to +120
-            # UI range: 0% to 100%
-            rf_gain_thetis = await self.get_rf_gain_thetis()
-            logger.debug(f"RF Gain from Thetis ZZAR: {rf_gain_thetis}")
-            # Convert Thetis range (-20 to +120) to percentage (0-100)
-            state["rf_gain"] = int((rf_gain_thetis + 20) / 140 * 100)
-        except Exception as e:
-            logger.debug(f"RFGAIN not supported: {e}")
-            state["rf_gain"] = 80
-
-        try:
-            power = await self.get_level("RFPOWER")
-            state["power"] = int(power * 100)
-        except Exception as e:
-            logger.debug(f"RFPOWER not supported: {e}")
-            state["power"] = 50
-
+        # Execute Thetis commands FIRST to avoid mixing with standard commands
         try:
             # Use Thetis native ZZGT command instead of hamlib l AGC
             # Thetis values: 0=Fixed, 1=Long, 2=Slow, 3=Med, 4=Fast, 5=Custom
@@ -361,6 +403,25 @@ class RigClient:
         except Exception as e:
             logger.debug(f"AGC not supported: {e}")
             state["agc"] = "MED"
+
+        try:
+            # Use Thetis native ZZAR (AGC Threshold) command
+            # Thetis range: -20 to +120
+            # UI range: 0% to 100%
+            rf_gain_thetis = await self.get_rf_gain_thetis()
+            logger.debug(f"RF Gain from Thetis ZZAR: {rf_gain_thetis}")
+            # Convert Thetis range (-20 to +120) to percentage (0-100)
+            state["rf_gain"] = int((rf_gain_thetis + 20) / 140 * 100)
+        except Exception as e:
+            logger.debug(f"RFGAIN not supported: {e}")
+            state["rf_gain"] = 80
+
+        try:
+            power = await self.get_level("RFPOWER")
+            state["power"] = int(power * 100)
+        except Exception as e:
+            logger.debug(f"RFPOWER not supported: {e}")
+            state["power"] = 50
 
         try:
             state["break_in"] = await self.get_func("BKIN")

@@ -222,8 +222,14 @@ async def handle_command(data: dict, websocket: WebSocket):
             success = await rig_client.set_agc_thetis(agc_value)
             logger.info(f"Set AGC result: {success}")
         elif cmd == "set_rf_gain":
-            # Convert percentage (0-100) to normalized value (0.0-1.0)
-            success = await rig_client.set_level("RFGAIN", int(value) / 100.0)
+            # Use Thetis native ZZAR (AGC Threshold) command
+            # UI range: 0-100%
+            # Thetis range: -20 to +120
+            # Conversion: thetis_value = (ui_percent / 100) * 140 - 20
+            rf_gain_pct = int(value)
+            rf_gain_thetis = int((rf_gain_pct / 100) * 140 - 20)
+            logger.info(f"Setting RF Gain: {rf_gain_pct}% → ZZAR{rf_gain_thetis:+04d}")
+            success = await rig_client.set_rf_gain_thetis(rf_gain_thetis)
         elif cmd == "set_break_in":
             # BKIN = Full break-in (QSK) for CW
             success = await rig_client.set_func("BKIN", bool(value))

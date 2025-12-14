@@ -17,7 +17,11 @@
 
         <!-- Main Display -->
         <div class="display">
-            <div class="frequency" x-text="formatFreq(state.freq)"></div>
+            <div class="frequency"
+                 x-text="formatFreq(state.freq)"
+                 @click="promptFrequency()"
+                 style="cursor: pointer;"
+                 title="Click per inserire frequenza"></div>
             <div class="mode" x-text="state.mode"></div>
         </div>
 
@@ -118,10 +122,11 @@
         <div class="freq-control">
             <div
                 class="vfo-dial"
+                id="vfo-dial"
                 @wheel.prevent="handleWheel($event)"
                 @click="promptFrequency()"
                 title="Scroll per sintonizzare, click per inserimento manuale">
-                <span>VFO</span>
+                <span style="pointer-events: none;">VFO</span>
             </div>
         </div>
 
