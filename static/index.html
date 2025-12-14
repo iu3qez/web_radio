@@ -52,6 +52,71 @@
             </template>
         </div>
 
+        <!-- Extended Controls -->
+        <div class="extended-controls">
+            <!-- AGC -->
+            <div class="control-group">
+                <label>AGC:</label>
+                <div class="control-buttons">
+                    <template x-for="a in agcModes">
+                        <button
+                            :class="{ active: state.agc === a }"
+                            @click="setAGC(a)"
+                            x-text="a">
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <!-- RF Gain -->
+            <div class="control-group">
+                <label>RF Gain: <span x-text="state.rf_gain + '%'"></span></label>
+                <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    :value="state.rf_gain"
+                    @input="setRFGain($event.target.value)"
+                    class="slider">
+            </div>
+
+            <!-- Power -->
+            <div class="control-group">
+                <label>Power: <span x-text="state.power + '%'"></span></label>
+                <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    :value="state.power"
+                    @input="setPower($event.target.value)"
+                    class="slider">
+            </div>
+
+            <!-- RIT -->
+            <div class="control-group">
+                <label>RIT: <span x-text="state.rit + ' Hz'"></span></label>
+                <div class="rit-controls">
+                    <button @click="adjustRIT(-10)">-10</button>
+                    <button @click="adjustRIT(-1)">-1</button>
+                    <button @click="setRIT(0)">CLR</button>
+                    <button @click="adjustRIT(1)">+1</button>
+                    <button @click="adjustRIT(10)">+10</button>
+                </div>
+            </div>
+
+            <!-- Toggle Controls -->
+            <div class="control-group toggle-group">
+                <label>
+                    <input type="checkbox" :checked="state.spot" @change="setSpot($event.target.checked)">
+                    <span>Spot</span>
+                </label>
+                <label>
+                    <input type="checkbox" :checked="state.break_in" @change="setBreakIn($event.target.checked)">
+                    <span>Break-in</span>
+                </label>
+            </div>
+        </div>
+
         <!-- Frequency Control -->
         <div class="freq-control">
             <div
