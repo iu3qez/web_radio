@@ -72,6 +72,26 @@ class RigClient:
         response = await self._send_command("l STRENGTH")
         return int(response)
 
+    async def get_level(self, level_name: str) -> float:
+        """Get level value (RFGAIN, RFPOWER, etc). Returns float 0.0-1.0."""
+        response = await self._send_command(f"l {level_name}")
+        return float(response)
+
+    async def get_func(self, func_name: str) -> bool:
+        """Get function status (SPOT, etc). Returns True if enabled."""
+        response = await self._send_command(f"u {func_name}")
+        return response == "1"
+
+    async def get_parm(self, parm_name: str) -> int:
+        """Get parameter value (AGC, etc). Returns integer."""
+        response = await self._send_command(f"p {parm_name}")
+        return int(response)
+
+    async def get_rit(self) -> int:
+        """Get RIT (Receiver Incremental Tuning) offset in Hz."""
+        response = await self._send_command("j")
+        return int(response)
+
     async def get_state(self) -> dict:
         """Get full radio state."""
         freq = await self.get_freq()

@@ -158,3 +158,108 @@ async def test_rig_client_get_state():
         assert state["mode"] == "USB"
         assert state["filter_width"] == 2400
         assert state["smeter"] == -65
+
+
+@pytest.mark.asyncio
+async def test_rig_client_get_level_rfgain():
+    """Test getting RF gain level."""
+    client = RigClient(host="127.0.0.1", port=4532)
+
+    mock_reader = AsyncMock()
+    mock_reader.readline = AsyncMock(return_value=b"0.8\n")
+    mock_writer = MagicMock()
+    mock_writer.write = MagicMock()
+    mock_writer.drain = AsyncMock()
+    mock_writer.close = MagicMock()
+    mock_writer.wait_closed = AsyncMock()
+    mock_writer.is_closing = MagicMock(return_value=False)
+
+    with patch("asyncio.open_connection", return_value=(mock_reader, mock_writer)):
+        await client.connect()
+        rf_gain = await client.get_level("RFGAIN")
+        assert rf_gain == 0.8
+        mock_writer.write.assert_called_with(b"l RFGAIN\n")
+
+
+@pytest.mark.asyncio
+async def test_rig_client_get_level_rfpower():
+    """Test getting RF power level."""
+    client = RigClient(host="127.0.0.1", port=4532)
+
+    mock_reader = AsyncMock()
+    mock_reader.readline = AsyncMock(return_value=b"0.5\n")
+    mock_writer = MagicMock()
+    mock_writer.write = MagicMock()
+    mock_writer.drain = AsyncMock()
+    mock_writer.close = MagicMock()
+    mock_writer.wait_closed = AsyncMock()
+    mock_writer.is_closing = MagicMock(return_value=False)
+
+    with patch("asyncio.open_connection", return_value=(mock_reader, mock_writer)):
+        await client.connect()
+        power = await client.get_level("RFPOWER")
+        assert power == 0.5
+        mock_writer.write.assert_called_with(b"l RFPOWER\n")
+
+
+@pytest.mark.asyncio
+async def test_rig_client_get_func():
+    """Test getting function status (SPOT)."""
+    client = RigClient(host="127.0.0.1", port=4532)
+
+    mock_reader = AsyncMock()
+    mock_reader.readline = AsyncMock(return_value=b"1\n")
+    mock_writer = MagicMock()
+    mock_writer.write = MagicMock()
+    mock_writer.drain = AsyncMock()
+    mock_writer.close = MagicMock()
+    mock_writer.wait_closed = AsyncMock()
+    mock_writer.is_closing = MagicMock(return_value=False)
+
+    with patch("asyncio.open_connection", return_value=(mock_reader, mock_writer)):
+        await client.connect()
+        spot = await client.get_func("SPOT")
+        assert spot is True
+        mock_writer.write.assert_called_with(b"u SPOT\n")
+
+
+@pytest.mark.asyncio
+async def test_rig_client_get_parm():
+    """Test getting parameter (AGC)."""
+    client = RigClient(host="127.0.0.1", port=4532)
+
+    mock_reader = AsyncMock()
+    mock_reader.readline = AsyncMock(return_value=b"2\n")
+    mock_writer = MagicMock()
+    mock_writer.write = MagicMock()
+    mock_writer.drain = AsyncMock()
+    mock_writer.close = MagicMock()
+    mock_writer.wait_closed = AsyncMock()
+    mock_writer.is_closing = MagicMock(return_value=False)
+
+    with patch("asyncio.open_connection", return_value=(mock_reader, mock_writer)):
+        await client.connect()
+        agc = await client.get_parm("AGC")
+        assert agc == 2
+        mock_writer.write.assert_called_with(b"p AGC\n")
+
+
+@pytest.mark.asyncio
+async def test_rig_client_get_rit():
+    """Test getting RIT offset."""
+    client = RigClient(host="127.0.0.1", port=4532)
+
+    mock_reader = AsyncMock()
+    mock_reader.readline = AsyncMock(return_value=b"100\n")
+    mock_writer = MagicMock()
+    mock_writer.write = MagicMock()
+    mock_writer.drain = AsyncMock()
+    mock_writer.close = MagicMock()
+    mock_writer.wait_closed = AsyncMock()
+    mock_writer.is_closing = MagicMock(return_value=False)
+
+    with patch("asyncio.open_connection", return_value=(mock_reader, mock_writer)):
+        await client.connect()
+        rit = await client.get_rit()
+        assert rit == 100
+        mock_writer.write.assert_called_with(b"j\n")
