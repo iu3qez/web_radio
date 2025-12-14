@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 import base64
 
 from main import app, get_config
@@ -41,3 +41,33 @@ def test_root_with_invalid_auth(client):
     credentials = base64.b64encode(b"operator:wrong").decode()
     response = client.get("/", headers={"Authorization": f"Basic {credentials}"})
     assert response.status_code == 401
+
+
+def test_websocket_requires_auth(client):
+    """Test WebSocket requires auth via query param."""
+    with pytest.raises(Exception):
+        with client.websocket_connect("/ws"):
+            pass
+
+
+def test_websocket_with_auth(client, mock_config):
+    """Test WebSocket connects with valid auth."""
+    import main
+
+    # Clear the lru_cache for get_config so our override works
+    main.get_config.cache_clear()
+
+    # Set up radio_state in the module
+    main.radio_state = {
+        "type": "state",
+        "freq": 14074000,
+        "mode": "USB",
+        "filter_width": 2400,
+        "smeter": -65,
+    }
+
+    with client.websocket_connect("/ws?token=operator:secret") as ws:
+        # Should receive initial state
+        data = ws.receive_json()
+        assert data["type"] == "state"
+        assert data["freq"] == 14074000
