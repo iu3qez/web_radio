@@ -1,5 +1,5 @@
 rigctld:
-  host: "127.0.0.1"
+  host: "yaesu.lan"
   port: 4532
 
 server:
