@@ -133,6 +133,13 @@ def verify_ws_token(token: str, config: dict) -> bool:
 
 async def handle_command(data: dict, websocket: WebSocket):
     """Handle incoming WebSocket command."""
+    if not rig_client or not rig_client.connected:
+        await websocket.send_json({
+            "type": "error",
+            "message": "Radio not connected"
+        })
+        return
+
     cmd = data.get("cmd")
     value = data.get("value")
 
@@ -141,6 +148,22 @@ async def handle_command(data: dict, websocket: WebSocket):
             success = await rig_client.set_freq(int(value))
         elif cmd == "set_mode":
             success = await rig_client.set_mode(str(value))
+        elif cmd == "set_filter_width":
+            success = await rig_client.set_mode(data.get("mode", "USB"), int(value))
+        elif cmd == "set_spot":
+            success = await rig_client.set_func("SPOT", bool(value))
+        elif cmd == "set_agc":
+            agc_map = {"OFF": 0, "SLOW": 1, "MED": 2, "FAST": 3}
+            agc_value = agc_map.get(str(value).upper(), 2)
+            success = await rig_client.set_parm("AGC", agc_value)
+        elif cmd == "set_rf_gain":
+            success = await rig_client.set_level("RFGAIN", int(value) / 100.0)
+        elif cmd == "set_break_in":
+            success = await rig_client.set_func("BKIN", bool(value))
+        elif cmd == "set_power":
+            success = await rig_client.set_level("RFPOWER", int(value) / 100.0)
+        elif cmd == "set_rit":
+            success = await rig_client.set_rit(int(value))
         elif cmd == "get_state":
             state = await rig_client.get_state()
             state["type"] = "state"
