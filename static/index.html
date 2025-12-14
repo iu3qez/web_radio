@@ -41,6 +41,17 @@
             </template>
         </div>
 
+        <!-- Band Selector -->
+        <div class="band-selector">
+            <span class="band-label">Band:</span>
+            <template x-for="b in bands">
+                <button
+                    @click="setBand(b.freq)"
+                    x-text="b.label">
+                </button>
+            </template>
+        </div>
+
         <!-- Frequency Control -->
         <div class="freq-control">
             <div

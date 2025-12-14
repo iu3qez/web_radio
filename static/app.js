@@ -20,6 +20,18 @@ function radioApp() {
             { label: '10k', value: 10000 },
             { label: '100k', value: 100000 },
         ],
+        bands: [
+            { label: '160m', freq: 1810000 },   // CW edge
+            { label: '80m', freq: 3500000 },
+            { label: '40m', freq: 7000000 },
+            { label: '30m', freq: 10100000 },
+            { label: '20m', freq: 14000000 },
+            { label: '17m', freq: 18068000 },
+            { label: '15m', freq: 21000000 },
+            { label: '12m', freq: 24890000 },
+            { label: '10m', freq: 28000000 },
+            { label: '6m', freq: 50000000 },
+        ],
 
         // Computed
         get smeterPercent() {
@@ -117,6 +129,12 @@ function radioApp() {
 
         setFreq(freq) {
             this.sendCommand('set_freq', freq);
+        },
+
+        setBand(freq) {
+            this.setFreq(freq);
+            // Optimistic update
+            this.state.freq = freq;
         },
 
         handleWheel(event) {
