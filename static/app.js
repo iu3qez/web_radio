@@ -6,6 +6,12 @@ function radioApp() {
             mode: 'USB',
             smeter: -100,
             filter_width: 2400,
+            rf_gain: 80,
+            power: 50,
+            spot: false,
+            agc: 'MED',
+            break_in: false,
+            rit: 0,
         },
         connectionStatus: 'disconnected',
         step: 1000,
@@ -32,6 +38,7 @@ function radioApp() {
             { label: '10m', freq: 28000000 },
             { label: '6m', freq: 50000000 },
         ],
+        agcModes: ['OFF', 'SLOW', 'MED', 'FAST'],
 
         // Computed
         get smeterPercent() {
@@ -135,6 +142,40 @@ function radioApp() {
             this.setFreq(freq);
             // Optimistic update
             this.state.freq = freq;
+        },
+
+        setAGC(mode) {
+            this.sendCommand('set_agc', mode);
+        },
+
+        setRFGain(value) {
+            this.sendCommand('set_rf_gain', parseInt(value));
+            this.state.rf_gain = parseInt(value);
+        },
+
+        setPower(value) {
+            this.sendCommand('set_power', parseInt(value));
+            this.state.power = parseInt(value);
+        },
+
+        setSpot(enabled) {
+            this.sendCommand('set_spot', enabled);
+            this.state.spot = enabled;
+        },
+
+        setBreakIn(enabled) {
+            this.sendCommand('set_break_in', enabled);
+            this.state.break_in = enabled;
+        },
+
+        setRIT(offset) {
+            this.sendCommand('set_rit', offset);
+            this.state.rit = offset;
+        },
+
+        adjustRIT(delta) {
+            const newRIT = this.state.rit + delta;
+            this.setRIT(newRIT);
         },
 
         handleWheel(event) {
