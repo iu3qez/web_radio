@@ -71,3 +71,16 @@ class RigClient:
         """Get S-meter reading in dBm."""
         response = await self._send_command("l STRENGTH")
         return int(response)
+
+    async def get_state(self) -> dict:
+        """Get full radio state."""
+        freq = await self.get_freq()
+        mode, width = await self.get_mode()
+        smeter = await self.get_smeter()
+
+        return {
+            "freq": freq,
+            "mode": mode,
+            "filter_width": width,
+            "smeter": smeter,
+        }

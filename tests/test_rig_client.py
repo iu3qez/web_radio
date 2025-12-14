@@ -127,3 +127,34 @@ async def test_rig_client_get_smeter():
         smeter = await client.get_smeter()
         assert smeter == -54
         mock_writer.write.assert_called_with(b"l STRENGTH\n")
+
+
+@pytest.mark.asyncio
+async def test_rig_client_get_state():
+    """Test getting full radio state."""
+    client = RigClient(host="127.0.0.1", port=4532)
+
+    responses = [
+        b"14074000\n",  # freq
+        b"USB\n", b"2400\n",  # mode
+        b"-65\n",  # smeter
+    ]
+    response_iter = iter(responses)
+
+    mock_reader = AsyncMock()
+    mock_reader.readline = AsyncMock(side_effect=lambda: next(response_iter))
+    mock_writer = MagicMock()
+    mock_writer.write = MagicMock()
+    mock_writer.drain = AsyncMock()
+    mock_writer.close = MagicMock()
+    mock_writer.wait_closed = AsyncMock()
+    mock_writer.is_closing = MagicMock(return_value=False)
+
+    with patch("asyncio.open_connection", return_value=(mock_reader, mock_writer)):
+        await client.connect()
+        state = await client.get_state()
+
+        assert state["freq"] == 14074000
+        assert state["mode"] == "USB"
+        assert state["filter_width"] == 2400
+        assert state["smeter"] == -65
