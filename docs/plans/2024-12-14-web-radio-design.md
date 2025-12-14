@@ -51,6 +51,7 @@ Webapp Python per controllo remoto RTX via hamlib/rigctld.
 {"cmd": "set_rf_gain", "value": 50}
 {"cmd": "set_break_in", "value": true}
 {"cmd": "set_power", "value": 5}
+{"cmd": "RIT", "value": 0}
 ```
 
 ### Server → Browser
@@ -67,7 +68,8 @@ Webapp Python per controllo remoto RTX via hamlib/rigctld.
   "agc": "med",
   "rf_gain": 80,
   "break_in": false,
-  "power": 10
+  "power": 10,
+  "RIT": 0
 }
 
 // Conferma comando
