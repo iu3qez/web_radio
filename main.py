@@ -183,6 +183,8 @@ async def handle_command(data: dict, websocket: WebSocket):
     - set_rit: Set RIT offset in Hz
     - get_state: Request full radio state
     """
+    logger = logging.getLogger(__name__)
+
     if not rig_client or not rig_client.connected:
         await websocket.send_json({
             "type": "error",
@@ -192,6 +194,9 @@ async def handle_command(data: dict, websocket: WebSocket):
 
     cmd = data.get("cmd")
     value = data.get("value")
+
+    # Log SET commands at INFO level to make them visible
+    logger.info(f"WebSocket command: {cmd} = {value}")
 
     try:
         if cmd == "set_freq":
@@ -204,17 +209,18 @@ async def handle_command(data: dict, websocket: WebSocket):
             # SPOT is momentary action - centers CW signal in filter
             success = await rig_client.set_func("SPOT", bool(value))
         elif cmd == "set_agc":
-            # AGC is a LEVEL (0.0-1.0), not a parameter
-            # Hamlib AGC values: 0=OFF, 1=SUPERFAST, 2=FAST, 3=SLOW, 4=USER, 5=MEDIUM, 6=AUTO
-            # Map UI strings to normalized values (value/6)
+            # Use Thetis native ZZGT command instead of hamlib L AGC
+            # Thetis values: 0=Fixed, 1=Long, 2=Slow, 3=Med, 4=Fast, 5=Custom
             agc_map = {
-                "OFF": 0.0,      # 0/6 = 0.0
-                "FAST": 0.33,    # 2/6 ≈ 0.33
-                "SLOW": 0.5,     # 3/6 = 0.5
-                "MED": 0.83      # 5/6 ≈ 0.83
+                "OFF": 0,      # Fixed
+                "SLOW": 2,     # Slow
+                "MED": 3,      # Med
+                "FAST": 4      # Fast
             }
-            agc_value = agc_map.get(str(value).upper(), 0.83)
-            success = await rig_client.set_level("AGC", agc_value)
+            agc_value = agc_map.get(str(value).upper(), 3)
+            logger.info(f"Setting AGC: {value} → ZZGT{agc_value}")
+            success = await rig_client.set_agc_thetis(agc_value)
+            logger.info(f"Set AGC result: {success}")
         elif cmd == "set_rf_gain":
             # Convert percentage (0-100) to normalized value (0.0-1.0)
             success = await rig_client.set_level("RFGAIN", int(value) / 100.0)

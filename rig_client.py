@@ -59,20 +59,34 @@ class RigClient:
             self._writer = None
             self._reader = None
 
-    async def _send_command(self, cmd: str) -> str:
-        """Send command and return response."""
+    async def _send_command(self, cmd: str, timeout: float = 5.0) -> str:
+        """Send command and return response.
+
+        Args:
+            cmd: Command to send
+            timeout: Timeout in seconds (default: 5.0)
+
+        Raises:
+            ConnectionError: If not connected
+            asyncio.TimeoutError: If rigctld doesn't respond within timeout
+        """
         if not self.connected:
             raise ConnectionError("Not connected to rigctld")
 
         async with self._lock:
             cmd_bytes = f"{cmd}\n".encode()
             logger.debug(f"→ rigctld: {cmd}")
-            self._writer.write(cmd_bytes)
-            await self._writer.drain()
-            response = await self._reader.readline()
-            response_str = response.decode().strip()
-            logger.debug(f"← rigctld: {response_str}")
-            return response_str
+
+            try:
+                self._writer.write(cmd_bytes)
+                await asyncio.wait_for(self._writer.drain(), timeout=timeout)
+                response = await asyncio.wait_for(self._reader.readline(), timeout=timeout)
+                response_str = response.decode().strip()
+                logger.debug(f"← rigctld: {response_str}")
+                return response_str
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout waiting for rigctld response to command: {cmd}")
+                raise
 
     async def get_freq(self) -> int:
         """Get current frequency in Hz.
@@ -82,19 +96,28 @@ class RigClient:
         response = await self._send_command("f")
         return int(response)
 
-    async def get_mode(self) -> Tuple[str, int]:
+    async def get_mode(self, timeout: float = 5.0) -> Tuple[str, int]:
         """Get current mode and passband width.
 
         rigctld command: m
         Returns: Two lines - mode (USB/LSB/CW/etc) and width in Hz
         Note: Uses direct I/O instead of _send_command for multi-line response
+
+        Args:
+            timeout: Timeout in seconds (default: 5.0)
         """
         async with self._lock:
-            self._writer.write(b"m\n")
-            await self._writer.drain()
-            mode = (await self._reader.readline()).decode().strip()
-            width = int((await self._reader.readline()).decode().strip())
-            return mode, width
+            try:
+                self._writer.write(b"m\n")
+                await asyncio.wait_for(self._writer.drain(), timeout=timeout)
+                mode_line = await asyncio.wait_for(self._reader.readline(), timeout=timeout)
+                width_line = await asyncio.wait_for(self._reader.readline(), timeout=timeout)
+                mode = mode_line.decode().strip()
+                width = int(width_line.decode().strip())
+                return mode, width
+            except asyncio.TimeoutError:
+                logger.error("Timeout waiting for rigctld response to 'm' command")
+                raise
 
     async def set_freq(self, freq: int) -> bool:
         """Set frequency in Hz. Returns True on success.
@@ -204,6 +227,72 @@ class RigClient:
         response = await self._send_command(f"J {offset}")
         return response == "RPRT 0"
 
+    async def send_raw_command(self, cmd: str) -> str:
+        """Send raw command to rig via rigctld 'w' (write_cmd).
+
+        For sending native rig commands (like Thetis ZZGT, Kenwood GT, etc)
+        that hamlib doesn't abstract.
+
+        rigctld command: w <native_cmd>
+        Returns: Response from rig
+        """
+        response = await self._send_command(f"w {cmd}")
+        return response
+
+    async def get_agc_thetis(self) -> int:
+        """Get AGC using Thetis native ZZGT command.
+
+        Returns: AGC value (0=Fixed, 1=Long, 2=Slow, 3=Med, 4=Fast, 5=Custom)
+        """
+        response = await self.send_raw_command("ZZGT;")
+        # Response format: "ZZGTX;" where X is the value
+        if response.startswith("ZZGT") and len(response) >= 5:
+            return int(response[4])
+        raise ValueError(f"Invalid ZZGT response: {response}")
+
+    async def set_agc_thetis(self, value: int) -> bool:
+        """Set AGC using Thetis native ZZGT command.
+
+        Args:
+            value: AGC value (0=Fixed, 1=Long, 2=Slow, 3=Med, 4=Fast, 5=Custom)
+
+        Returns: True on success
+        """
+        response = await self.send_raw_command(f"ZZGT{value};")
+        # Thetis responds with the same command as confirmation
+        return response.startswith("ZZGT")
+
+    async def get_rf_gain_thetis(self) -> int:
+        """Get RF Gain (AGC Threshold) using Thetis native ZZAR command.
+
+        Returns: AGC Threshold value (-20 to +120)
+        """
+        response = await self.send_raw_command("ZZAR;")
+        # Response format: "ZZAR+XXX;" or "ZZAR-XXX;"
+        if response.startswith("ZZAR") and len(response) >= 9:
+            # Extract value including sign: "+080" or "-020"
+            value_str = response[4:8]  # e.g. "+080"
+            return int(value_str)
+        raise ValueError(f"Invalid ZZAR response: {response}")
+
+    async def set_rf_gain_thetis(self, value: int) -> bool:
+        """Set RF Gain (AGC Threshold) using Thetis native ZZAR command.
+
+        Args:
+            value: AGC Threshold (-20 to +120)
+
+        Returns: True on success
+        """
+        # Format with sign and 3 digits: +080, -020, +120
+        if value >= 0:
+            value_str = f"+{value:03d}"
+        else:
+            value_str = f"{value:04d}"  # Negative sign counts as character
+
+        response = await self.send_raw_command(f"ZZAR{value_str};")
+        # Thetis responds with the same command as confirmation
+        return response.startswith("ZZAR")
+
     async def get_state(self) -> dict:
         """Get full radio state with extended controls.
 
@@ -236,8 +325,13 @@ class RigClient:
 
         # Extended controls (optional - use defaults if not supported)
         try:
-            rf_gain = await self.get_level("RFGAIN")
-            state["rf_gain"] = int(rf_gain * 100)
+            # Use Thetis native ZZAR (AGC Threshold) command
+            # Thetis range: -20 to +120
+            # UI range: 0% to 100%
+            rf_gain_thetis = await self.get_rf_gain_thetis()
+            logger.debug(f"RF Gain from Thetis ZZAR: {rf_gain_thetis}")
+            # Convert Thetis range (-20 to +120) to percentage (0-100)
+            state["rf_gain"] = int((rf_gain_thetis + 20) / 140 * 100)
         except Exception as e:
             logger.debug(f"RFGAIN not supported: {e}")
             state["rf_gain"] = 80
@@ -250,19 +344,20 @@ class RigClient:
             state["power"] = 50
 
         try:
-            # AGC is a LEVEL (0.0-1.0), not a parameter
-            # Hamlib AGC values: 0=OFF, 1=SUPERFAST, 2=FAST, 3=SLOW, 4=USER, 5=MEDIUM, 6=AUTO
-            # Normalized to 0.0-1.0 range
-            agc_level = await self.get_level("AGC")
-            # Map normalized value to UI strings
-            if agc_level < 0.1:
-                state["agc"] = "OFF"      # 0/6 = 0.0
-            elif agc_level < 0.4:
-                state["agc"] = "FAST"     # 2/6 ≈ 0.33
-            elif agc_level < 0.7:
-                state["agc"] = "SLOW"     # 3/6 = 0.5
-            else:
-                state["agc"] = "MED"      # 5/6 ≈ 0.83
+            # Use Thetis native ZZGT command instead of hamlib l AGC
+            # Thetis values: 0=Fixed, 1=Long, 2=Slow, 3=Med, 4=Fast, 5=Custom
+            agc_value = await self.get_agc_thetis()
+            logger.debug(f"AGC from Thetis ZZGT: {agc_value}")
+            # Map Thetis values to UI strings
+            agc_map = {
+                0: "OFF",   # Fixed
+                1: "SLOW",  # Long (map to SLOW)
+                2: "SLOW",  # Slow
+                3: "MED",   # Med
+                4: "FAST",  # Fast
+                5: "MED"    # Custom (map to MED)
+            }
+            state["agc"] = agc_map.get(agc_value, "MED")
         except Exception as e:
             logger.debug(f"AGC not supported: {e}")
             state["agc"] = "MED"
