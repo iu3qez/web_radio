@@ -52,6 +52,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Web Radio", lifespan=lifespan)
 security = HTTPBasic()
 
+# Mount static files
+static_path = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=static_path), name="static")
+
 
 @lru_cache
 def get_config() -> dict:
