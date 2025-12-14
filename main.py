@@ -51,4 +51,5 @@ def verify_credentials(
 @app.get("/")
 async def root(username: Annotated[str, Depends(verify_credentials)]):
     """Serve main UI page."""
-    return FileResponse("static/index.html")
+    static_file = Path(__file__).parent / "static" / "index.html"
+    return FileResponse(static_file)
