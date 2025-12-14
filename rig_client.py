@@ -92,6 +92,27 @@ class RigClient:
         response = await self._send_command("j")
         return int(response)
 
+    async def set_level(self, level_name: str, value: float) -> bool:
+        """Set level value (RFGAIN, RFPOWER, etc). Value 0.0-1.0. Returns True on success."""
+        response = await self._send_command(f"L {level_name} {value}")
+        return response == "RPRT 0"
+
+    async def set_func(self, func_name: str, enable: bool) -> bool:
+        """Set function (SPOT, etc). Returns True on success."""
+        value = "1" if enable else "0"
+        response = await self._send_command(f"U {func_name} {value}")
+        return response == "RPRT 0"
+
+    async def set_parm(self, parm_name: str, value: int) -> bool:
+        """Set parameter (AGC, etc). Returns True on success."""
+        response = await self._send_command(f"P {parm_name} {value}")
+        return response == "RPRT 0"
+
+    async def set_rit(self, offset: int) -> bool:
+        """Set RIT offset in Hz. Returns True on success."""
+        response = await self._send_command(f"J {offset}")
+        return response == "RPRT 0"
+
     async def get_state(self) -> dict:
         """Get full radio state."""
         freq = await self.get_freq()
