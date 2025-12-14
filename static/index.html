@@ -118,7 +118,9 @@
         <div class="freq-control">
             <div
                 class="vfo-dial"
-                @wheel.prevent="handleWheel($event)">
+                @wheel.prevent="handleWheel($event)"
+                @click="promptFrequency()"
+                title="Scroll per sintonizzare, click per inserimento manuale">
                 <span>VFO</span>
             </div>
         </div>

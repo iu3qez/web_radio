@@ -185,6 +185,34 @@ function radioApp() {
             this.state.freq = newFreq;
         },
 
+        promptFrequency() {
+            const input = prompt('Inserisci frequenza (es: 14.074 o 14074000):');
+            if (!input) return;
+
+            // Parse frequency - support multiple formats
+            let freq = input.replace(/[^\d.]/g, ''); // Remove non-numeric except dots
+
+            // If contains dot, assume MHz format
+            if (freq.includes('.')) {
+                freq = parseFloat(freq) * 1000000;
+            } else {
+                freq = parseInt(freq);
+                // If less than 1 million, assume kHz
+                if (freq < 1000000) {
+                    freq = freq * 1000;
+                }
+            }
+
+            // Validate range (HF: 1.8-30 MHz, VHF: 50-54 MHz, UHF: 144-148 MHz, etc)
+            if (freq < 100000 || freq > 2000000000) {
+                alert('Frequenza non valida. Range: 0.1 - 2000 MHz');
+                return;
+            }
+
+            this.setFreq(freq);
+            this.state.freq = freq;
+        },
+
         formatFreq(hz) {
             // Format as XX.XXX.XXX
             const str = hz.toString().padStart(8, '0');

@@ -1,6 +1,7 @@
 """Web Radio - FastAPI server for RTX control via rigctld."""
 
 import asyncio
+import logging
 import secrets
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -15,6 +16,12 @@ from fastapi.responses import FileResponse
 
 from rig_client import RigClient
 
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
 
 # Global state
 rig_client: RigClient = None
@@ -27,6 +34,7 @@ async def lifespan(app: FastAPI):
     """App lifespan: connect to rigctld, start poller."""
     global rig_client
     config = get_config()
+    logger = logging.getLogger(__name__)
 
     rig_client = RigClient(
         host=config["rigctld"]["host"],
@@ -36,8 +44,9 @@ async def lifespan(app: FastAPI):
     # Try to connect (don't fail if rigctld not available)
     try:
         await rig_client.connect()
-    except Exception:
-        pass
+        logger.info(f"Connected to rigctld at {config['rigctld']['host']}:{config['rigctld']['port']}")
+    except Exception as e:
+        logger.warning(f"Failed to connect to rigctld: {e}. Will retry in polling loop.")
 
     # Start polling task
     poll_task = asyncio.create_task(poll_radio_state(config["polling"]["interval_ms"]))
@@ -90,17 +99,45 @@ def verify_credentials(
 
 
 async def poll_radio_state(interval_ms: int):
-    """Poll rigctld and broadcast state to clients."""
-    global radio_state
+    """Poll rigctld and broadcast state to clients.
+
+    Automatically reconnects if connection is lost.
+    """
+    global rig_client, radio_state
+    logger = logging.getLogger(__name__)
+    config = get_config()
+    reconnect_attempts = 0
 
     while True:
         try:
+            # Try to reconnect if not connected
+            if rig_client and not rig_client.connected:
+                if reconnect_attempts == 0:
+                    logger.info("Attempting to connect to rigctld...")
+                try:
+                    await rig_client.connect()
+                    logger.info(f"Connected to rigctld at {config['rigctld']['host']}:{config['rigctld']['port']}")
+                    reconnect_attempts = 0
+                except Exception as e:
+                    reconnect_attempts += 1
+                    if reconnect_attempts % 10 == 1:  # Log every 10 attempts
+                        logger.warning(f"Cannot connect to rigctld (attempt {reconnect_attempts}): {e}")
+                    await asyncio.sleep(interval_ms / 1000)
+                    continue
+
+            # Poll radio state if connected
             if rig_client and rig_client.connected:
                 radio_state = await rig_client.get_state()
                 radio_state["type"] = "state"
                 await broadcast(radio_state)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Error polling radio state: {e}", exc_info=True)
+            # Disconnect to trigger reconnection
+            if rig_client and rig_client.connected:
+                try:
+                    await rig_client.disconnect()
+                except Exception:
+                    pass
 
         await asyncio.sleep(interval_ms / 1000)
 
@@ -132,7 +169,20 @@ def verify_ws_token(token: str, config: dict) -> bool:
 
 
 async def handle_command(data: dict, websocket: WebSocket):
-    """Handle incoming WebSocket command."""
+    """Handle incoming WebSocket command.
+
+    Supported commands:
+    - set_freq: Set frequency in Hz
+    - set_mode: Set mode (USB, LSB, CW, AM, FM, DATA)
+    - set_filter_width: Set filter width in Hz
+    - set_spot: Momentary SPOT function (centers CW signal)
+    - set_agc: Set AGC mode (OFF, SLOW, MED, FAST)
+    - set_rf_gain: Set RF gain 0-100%
+    - set_power: Set TX power 0-100%
+    - set_break_in: Enable/disable break-in (full QSK)
+    - set_rit: Set RIT offset in Hz
+    - get_state: Request full radio state
+    """
     if not rig_client or not rig_client.connected:
         await websocket.send_json({
             "type": "error",
@@ -151,16 +201,28 @@ async def handle_command(data: dict, websocket: WebSocket):
         elif cmd == "set_filter_width":
             success = await rig_client.set_mode(data.get("mode", "USB"), int(value))
         elif cmd == "set_spot":
+            # SPOT is momentary action - centers CW signal in filter
             success = await rig_client.set_func("SPOT", bool(value))
         elif cmd == "set_agc":
-            agc_map = {"OFF": 0, "SLOW": 1, "MED": 2, "FAST": 3}
-            agc_value = agc_map.get(str(value).upper(), 2)
-            success = await rig_client.set_parm("AGC", agc_value)
+            # AGC is a LEVEL (0.0-1.0), not a parameter
+            # Hamlib AGC values: 0=OFF, 1=SUPERFAST, 2=FAST, 3=SLOW, 4=USER, 5=MEDIUM, 6=AUTO
+            # Map UI strings to normalized values (value/6)
+            agc_map = {
+                "OFF": 0.0,      # 0/6 = 0.0
+                "FAST": 0.33,    # 2/6 ≈ 0.33
+                "SLOW": 0.5,     # 3/6 = 0.5
+                "MED": 0.83      # 5/6 ≈ 0.83
+            }
+            agc_value = agc_map.get(str(value).upper(), 0.83)
+            success = await rig_client.set_level("AGC", agc_value)
         elif cmd == "set_rf_gain":
+            # Convert percentage (0-100) to normalized value (0.0-1.0)
             success = await rig_client.set_level("RFGAIN", int(value) / 100.0)
         elif cmd == "set_break_in":
+            # BKIN = Full break-in (QSK) for CW
             success = await rig_client.set_func("BKIN", bool(value))
         elif cmd == "set_power":
+            # Convert percentage (0-100) to normalized value (0.0-1.0)
             success = await rig_client.set_level("RFPOWER", int(value) / 100.0)
         elif cmd == "set_rit":
             success = await rig_client.set_rit(int(value))
